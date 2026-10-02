@@ -7,7 +7,9 @@ UA_OUT = "reddit-comments/1.0 (personal archive)"
 # 0) direct reddit .json attempt (full tree, real id) — bypass share-link entirely
 DIRECT_JSON = "https://www.reddit.com/comments/1wu3hdu.json?raw_json=1&limit=500&depth=10"
 try:
-    r0 = S.get(DIRECT_JSON)
+    from curl_cffi import requests as _cr
+    _S = _cr.Session(impersonate="chrome", timeout=40)
+    r0 = _S.get(DIRECT_JSON)
     print("direct json status:", r0.status_code, "len:", len(r0.text or ""))
     if r0.status_code == 200 and (r0.text or "").lstrip().startswith("["):
         open("./out/reddit_raw.json", "w").write(r0.text)
