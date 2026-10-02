@@ -4,6 +4,17 @@ import json, re, sys, time, urllib.parse
 from curl_cffi import requests as cr
 
 UA_OUT = "reddit-comments/1.0 (personal archive)"
+# 0) direct reddit .json attempt (full tree, real id) — bypass share-link entirely
+DIRECT_JSON = "https://www.reddit.com/comments/1wu3hdu.json?raw_json=1&limit=500&depth=10"
+try:
+    r0 = S.get(DIRECT_JSON)
+    print("direct json status:", r0.status_code, "len:", len(r0.text or ""))
+    if r0.status_code == 200 and (r0.text or "").lstrip().startswith("["):
+        open("./out/reddit_raw.json", "w").write(r0.text)
+        print("DIRECT_JSON_OK")
+except Exception as e:
+    print("direct json ERR", str(e)[:110])
+
 SRC = "https://www.reddit.com/r/confusing_perspective/s/pE3kcxlldl"
 OUT = "./out/confusing_perspective_comments.txt"
 
