@@ -1,0 +1,38 @@
+name: fetch
+on:
+  workflow_dispatch:
+    inputs:
+      post_url:
+        description: "Reddit post URL"
+        required: false
+        default: "https://www.reddit.com/r/confusing_perspective/s/pE3kcxlldl"
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: deps
+        run: pip install -q curl_cffi
+      - name: fetch comments
+        env:
+          POST_URL: ${{ github.event.inputs.post_url }}
+        run: |
+          python3 - <<'PYEOF'
+          import os, re
+          src = open("fetch_comments.py", encoding="utf-8").read()
+          url = os.environ.get("POST_URL", "")
+          if url:
+              src = re.sub(r'SRC = "[^"]*"', 'SRC = "%s"' % url, src, count=1)
+          exec(compile(src, "fetch_comments.py", "exec"))
+          PYEOF
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: comments
+          path: out/
