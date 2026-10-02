@@ -21,18 +21,71 @@ def jget(url, tries=3):
         time.sleep(1.5 * (i + 1))
     return None
 
-# 1) resolve shortlink
-r = S.get(SRC)
-final = r.url
-print("resolved:", final)
-m = re.search(r"(https://www\.reddit\.com/r/[^?#]+/comments/[A-Za-z0-9]+[^?#]*)", final)
-if not m:
-    m2 = re.search(r"/comments/([A-Za-z0-9]+)", final)
-    if not m2:
-        print("FATAL cannot resolve post id"); sys.exit(2)
-    base = "https://www.reddit.com/comments/%s" % m2.group(1)
-else:
-    base = m.group(1)
+# 1) resolve shortlink (multi-probe)
+def probe(url, tag):
+    try:
+        r = S.get(url)
+        txt = r.text or ""
+        print("probe %s -> %d %s len=%d" % (tag, r.status_code, r.url, len(txt)))
+        ids = list(dict.fromkeys(re.findall(r"/comments/([A-Za-z0-9]{5,8})", txt)))
+        cans = re.findall(r'<link[^>]+rel="canonical"[^>]+href="([^"]+)"', txt)
+        pms = list(dict.fromkeys(re.findall(r'"permalink"\s*:\s*"([^"]+)"', txt)))[:3]
+        print("  ids=%s canonical=%s permalinks=%s" % (ids[:6], cans[:2], pms[:2]))
+        m = re.search(r"/comments/([A-Za-z0-9]{5,8})", r.url)
+        if m:
+            return "https://www.reddit.com/comments/" + m.group(1)
+        if ids:
+            return "https://www.reddit.com/comments/" + ids[0]
+        for c in cans:
+            mc = re.search(r"/comments/([A-Za-z0-9]{5,8})", c)
+            if mc: return "https://www.reddit.com/comments/" + mc.group(1)
+        for p in pms:
+            mp = re.search(r"/comments/([A-Za-z0-9]{5,8})", p)
+            if mp: return "https://www.reddit.com" + p.split("?")[0]
+        if txt.lstrip().startswith("{"):
+            try:
+                jj = json.loads(txt)
+                blob = json.dumps(jj)
+                mb = re.search(r"/comments/([A-Za-z0-9]{5,8})", blob)
+                if mb: return "https://www.reddit.com/comments/" + mb.group(1)
+            except Exception: pass
+    except Exception as e:
+        print("probe %s ERR %s" % (tag, str(e)[:110]))
+    return None
+
+resolved = None
+for tag, u in [
+    ("share", SRC),
+    ("share.json", SRC + ".json"),
+    ("root-s", "https://www.reddit.com/s/pE3kcxlldl"),
+    ("old-share", SRC.replace("www.reddit.com", "old.reddit.com")),
+    ("np-share", SRC.replace("www.reddit.com", "np.reddit.com")),
+]:
+    resolved = probe(u, tag)
+    if resolved:
+        break
+    time.sleep(1)
+
+if not resolved:
+    # wayback from runner
+    try:
+        wb = json.loads(S.get("https://archive.org/wayback/available?url=" +
+            urllib.parse.quote(SRC.replace("https://", ""), safe="")).text)
+        snaps = wb.get("archived_snapshots", {})
+        print("wayback:", json.dumps(snaps)[:250])
+        cand = (snaps.get("closest") or {}).get("url", "")
+        m = re.search(r"/comments/([A-Za-z0-9]{5,8})", cand)
+        if m: resolved = "https://www.reddit.com/comments/" + m.group(1)
+    except Exception as e:
+        print("wayback ERR", str(e)[:110])
+
+if not resolved:
+    print("FATAL cannot resolve post id"); sys.exit(2)
+
+final = resolved
+print("resolved ->", final)
+m = re.search(r"(https://www\.reddit\.com/(?:r/[^?#]+/)?comments/[A-Za-z0-9]+)", final)
+base = m.group(1) if m else final
 post_id = re.search(r"/comments/([A-Za-z0-9]+)", base).group(1)
 print("post:", post_id)
 
